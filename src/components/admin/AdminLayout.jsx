@@ -49,7 +49,7 @@ export default function AdminLayout() {
       }
 
       // 2. Fetch all categories (including hidden)
-      const catRes = await fetch('/api/categories?all=true');
+      const catRes = await authFetch('/api/categories?all=true');
       const catData = await catRes.json();
       if (catData.success) {
         setCategories(catData.categories || []);

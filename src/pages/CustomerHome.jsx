@@ -10,6 +10,7 @@ import ContactSection from '../components/ContactSection';
 import Footer from '../components/Footer';
 import FloatingWhatsApp from '../components/FloatingWhatsApp';
 import { getAllProducts, categoriesData } from '../data/productsData';
+import { API_BASE } from '../context/AuthContext';
 
 export default function CustomerHome() {
   const [activeCategory, setActiveCategory] = useState('doormats');
@@ -21,7 +22,7 @@ export default function CustomerHome() {
 
   useEffect(() => {
     // 1. Fetch live visible products from MongoDB API
-    fetch('/api/products')
+    fetch(`${API_BASE}/api/products`)
       .then((res) => {
         if (!res.ok) throw new Error('API fetch failed');
         return res.json();
@@ -36,7 +37,7 @@ export default function CustomerHome() {
       });
 
     // 2. Fetch live categories from MongoDB API
-    fetch('/api/categories')
+    fetch(`${API_BASE}/api/categories`)
       .then((res) => {
         if (!res.ok) throw new Error('API fetch failed');
         return res.json();

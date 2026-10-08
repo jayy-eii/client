@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -16,7 +18,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
           headers: {
             Authorization: `Bearer ${storedToken}`,
           },
@@ -45,7 +47,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -76,8 +78,9 @@ export const AuthProvider = ({ children }) => {
   const authFetch = async (url, options = {}) => {
     const headers = options.headers || {};
     const authToken = token || localStorage.getItem('yash_admin_token');
+    const fullUrl = url.startsWith('/') && API_BASE ? `${API_BASE}${url}` : url;
 
-    const res = await fetch(url, {
+    const res = await fetch(fullUrl, {
       ...options,
       headers: {
         ...headers,
