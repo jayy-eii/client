@@ -1,0 +1,17 @@
+# Node & Build artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Environment files & Secrets
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
