@@ -18,6 +18,7 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:5173',
+  'https://yashcloths.vercel.app',
 ];
 
 if (process.env.CLIENT_URL) {
@@ -29,46 +30,41 @@ if (process.env.CLIENT_URL) {
   });
 }
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, health checks)
-      if (!origin) return callback(null, true);
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, health checks, server-to-server)
+    if (!origin) return callback(null, true);
 
-      let isAllowed = allowedOrigins.includes(origin);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
 
-      // Also allow any *.vercel.app domain if client is deployed on Vercel
-      if (!isAllowed) {
-        try {
-          const hostname = new URL(origin).hostname;
-          if (hostname.endsWith('.vercel.app')) {
-            isAllowed = true;
-          }
-        } catch {
-          // invalid origin format
-        }
-      }
+    // Allow any *.vercel.app domain (preview deployments)
+    try {
+      const hostname = new URL(origin).hostname;
+      if (hostname.endsWith('.vercel.app')) return callback(null, true);
+    } catch {
+      // invalid origin format
+    }
 
-      // If CLIENT_URL is not explicitly set, permit the requesting origin dynamically
-      if (!process.env.CLIENT_URL) {
-        isAllowed = true;
-      }
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
+};
 
-      if (isAllowed) {
-        return callback(null, true);
-      }
+// CORS must be the very first middleware
+app.use(cors(corsOptions));
 
-      return callback(new Error(`Blocked by CORS: origin ${origin} is not allowed`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health Check
+// Root + Health Check
+app.get('/', (req, res) => {
+  res.status(200).send('Yash Cloth Stores API is running');
+});
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
@@ -82,7 +78,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 
-// 404 Route handler for unknown API routes
+// 404 handler for unknown API routes
 app.use('/api', (req, res) => {
   res.status(404).json({
     success: false,
@@ -107,6 +103,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`[Yash Cloth Stores Server] Running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[Yash Cloth Stores Server] Running on port ${PORT}`);
 });
