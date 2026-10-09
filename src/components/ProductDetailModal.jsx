@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Layers,
   Loader2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import {
   storeInfo,
@@ -24,15 +25,24 @@ import {
   getProductIdentifier,
   getProductPageUrl,
   getProductSlug,
+  getProductPrimaryImageUrl,
   generateWhatsAppOrderMessage,
 } from '../data/productsData';
+import {
+  shareImageWithCaption,
+  copyImageToClipboard,
+  canShareFiles,
+  createShareableImageFile,
+} from '../utils/whatsappShareHelper';
 
 export default function ProductDetailModal({ product, onClose }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showShareFallback, setShowShareFallback] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMessage, setCopiedMessage] = useState(false);
+  const [copiedPhoto, setCopiedPhoto] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [orderToast, setOrderToast] = useState('');
 
   const touchStartX = useRef(null);
   const touchEndX = useRef(null);
@@ -73,6 +83,12 @@ export default function ProductDetailModal({ product, onClose }) {
     .filter(Boolean);
 
   const currentImageUrl = images[currentImageIndex] || images[0];
+
+  // Guaranteed absolute URL for WhatsApp link previews and external sharing
+  const absoluteImageUrl = currentImageUrl.startsWith('http')
+    ? currentImageUrl
+    : `${window.location.origin}${currentImageUrl.startsWith('/') ? '' : '/'}${currentImageUrl}`;
+
   const productId = getProductIdentifier(product);
   const productPageUrl = getProductPageUrl(product, true);
   const displayPrice = getDisplayPrice(product.price);
@@ -82,12 +98,14 @@ export default function ProductDetailModal({ product, onClose }) {
   const whatsappOrderUrl = getWhatsAppOrderUrl(product, {
     productId,
     pageUrl: productPageUrl,
+    photoUrl: absoluteImageUrl,
     selectedVariation: product.size,
   });
 
   const fullOrderMessage = generateWhatsAppOrderMessage(product, {
     productId,
     pageUrl: productPageUrl,
+    photoUrl: absoluteImageUrl,
     selectedVariation: product.size,
   });
 
@@ -139,57 +157,44 @@ export default function ProductDetailModal({ product, onClose }) {
     }
   };
 
+  const handleCopyPhoto = async () => {
+    const success = await copyImageToClipboard(absoluteImageUrl);
+    if (success) {
+      setCopiedPhoto(true);
+      setTimeout(() => setCopiedPhoto(false), 2500);
+    } else {
+      alert('Could not copy image automatically. You can save or open the photo below.');
+    }
+  };
+
+  const handleWhatsAppOrderClick = async () => {
+    // Attempt copying photo to clipboard so desktop/app users can paste directly in chat
+    copyImageToClipboard(absoluteImageUrl).catch(() => {});
+    setOrderToast('WhatsApp opened! Direct photo link is in the message. You can also press Paste (Ctrl+V) in chat.');
+    setTimeout(() => setOrderToast(''), 6000);
+  };
+
   const handleShareWithImage = async () => {
     setIsSharing(true);
 
-    if (navigator.share) {
-      try {
-        let fileToShare = null;
-        if (currentImageUrl) {
-          try {
-            const resp = await fetch(currentImageUrl, { mode: 'cors' });
-            if (resp.ok) {
-              const blob = await resp.blob();
-              const ext = blob.type && blob.type.includes('png') ? 'png' : 'jpg';
-              const filename = `${(product.slug || product.name || 'product')
-                .toLowerCase()
-                .replace(/[^a-z0-9]/g, '-')}-photo.${ext}`;
-              fileToShare = new File([blob], filename, {
-                type: blob.type || 'image/jpeg',
-              });
-            }
-          } catch (fetchErr) {
-            console.warn('Could not construct image File for Web Share:', fetchErr);
-          }
-        }
-
-        // Check if files can be shared
-        if (fileToShare && navigator.canShare && navigator.canShare({ files: [fileToShare] })) {
-          await navigator.share({
-            title: `${product.name} — Yash Cloth Stores`,
-            text: fullOrderMessage,
-            url: productPageUrl,
-            files: [fileToShare],
-          });
+    try {
+      if (canShareFiles()) {
+        const shared = await shareImageWithCaption({
+          imageUrl: absoluteImageUrl,
+          captionText: fullOrderMessage,
+          title: `${product.name} — Yash Cloth Stores`,
+        });
+        if (shared) {
           setIsSharing(false);
           return;
         }
-
-        // Try standard Web Share without files
-        await navigator.share({
-          title: `${product.name} — Yash Cloth Stores`,
-          text: fullOrderMessage,
-          url: productPageUrl,
-        });
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') {
         setIsSharing(false);
         return;
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          setIsSharing(false);
-          return;
-        }
-        console.warn('Web Share failed, opening graceful fallback:', err);
       }
+      console.warn('Native file share failed, falling back:', err);
     }
 
     setIsSharing(false);
@@ -217,7 +222,7 @@ export default function ProductDetailModal({ product, onClose }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Share / Copy quick link */}
+            {/* Quick Share Link */}
             <button
               type="button"
               onClick={handleCopyLink}
@@ -259,7 +264,7 @@ export default function ProductDetailModal({ product, onClose }) {
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
-              className="relative aspect-[4/3] rounded-xl overflow-hidden bg-[#F2EDE6] border border-[#E8E4DC] flex items-center justify-center select-none"
+              className="relative aspect-[4/3] rounded-xl overflow-hidden bg-[#F2EDE6] border border-[#E8E4DC] flex items-center justify-center select-none shadow-xs"
             >
               <img
                 src={currentImageUrl}
@@ -267,7 +272,7 @@ export default function ProductDetailModal({ product, onClose }) {
                 className="w-full h-full object-cover object-center transition-all duration-300 pointer-events-none"
               />
 
-              {/* Prev / Next Arrows ONLY if multiple images */}
+              {/* Prev / Next Controls ONLY if multiple images */}
               {images.length > 1 && (
                 <>
                   <button
@@ -321,7 +326,7 @@ export default function ProductDetailModal({ product, onClose }) {
               </div>
             )}
 
-            {/* Genuine store stock badge */}
+            {/* In-Store Guarantee Note */}
             <div className="p-3 rounded-xl bg-[#FAF9F6] border border-[#EBE6DD] flex items-center gap-2.5 text-xs text-[#6B6A66]">
               <ShieldCheck className="w-4 h-4 text-[#8C6542] flex-shrink-0" />
               <span>Genuine home-furnishing stock inspected and available at our Bajaria, Nagpur store.</span>
@@ -436,10 +441,22 @@ export default function ProductDetailModal({ product, onClose }) {
               {/* Required WhatsApp Order Instruction Callout */}
               <div className="p-3 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] text-xs text-[#166534] flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-[#16a34a] mt-0.5 flex-shrink-0" />
-                <p className="leading-relaxed text-[11px]">
-                  <strong>Ordering instruction:</strong> Product details are ready in WhatsApp. To send the product photo, attach the saved/shared image if needed.
-                </p>
+                <div className="leading-relaxed text-[11px]">
+                  <p>
+                    <strong>WhatsApp Ordering with Photo:</strong> Product photo link is automatically included in your WhatsApp message.
+                  </p>
+                  <p className="text-[10px] text-[#15803d] mt-0.5">
+                    To send the actual photo file, tap <em>&ldquo;Share Product with Image&rdquo;</em> or attach the saved photo.
+                  </p>
+                </div>
               </div>
+
+              {/* Toast feedback */}
+              {orderToast && (
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 animate-in fade-in">
+                  {orderToast}
+                </div>
+              )}
 
               {/* Action Buttons: Order on WhatsApp & Share Product with Image */}
               <div className="space-y-2">
@@ -447,12 +464,13 @@ export default function ProductDetailModal({ product, onClose }) {
                   href={whatsappOrderUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-[#25D366] text-white text-xs sm:text-sm font-bold hover:bg-[#20ba59] transition-all shadow-sm"
-                  title="Order on WhatsApp with product details"
+                  onClick={handleWhatsAppOrderClick}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-[#25D366] text-white text-xs sm:text-sm font-bold hover:bg-[#20ba59] transition-all shadow-sm cursor-pointer"
+                  title="Order on WhatsApp with product details & photo link"
                   aria-label={`Order ${product.name} on WhatsApp`}
                 >
                   <MessageCircle className="w-4 h-4 fill-white shrink-0" />
-                  <span>Order on WhatsApp</span>
+                  <span>Order on WhatsApp (with Photo Link)</span>
                 </a>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -461,14 +479,14 @@ export default function ProductDetailModal({ product, onClose }) {
                     onClick={handleShareWithImage}
                     disabled={isSharing}
                     className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-[#D5CEC4] bg-white text-[#1C1C1A] text-xs font-semibold hover:bg-[#F9F7F2] hover:border-[#8C6542] transition-colors cursor-pointer"
-                    title="Share product with image and link"
+                    title="Send actual photo file to WhatsApp"
                   >
                     {isSharing ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-[#8C6542]" />
                     ) : (
                       <Share2 className="w-3.5 h-3.5 text-[#8C6542]" />
                     )}
-                    <span>Share Product with Image</span>
+                    <span>Share Photo & Order</span>
                   </button>
 
                   <a
@@ -500,7 +518,7 @@ export default function ProductDetailModal({ product, onClose }) {
         </div>
       </div>
 
-      {/* Graceful Fallback Modal for Sharing Image & Product Details */}
+      {/* Helper Modal for Sending Photo & Order Details */}
       {showShareFallback && (
         <div
           className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
@@ -513,10 +531,10 @@ export default function ProductDetailModal({ product, onClose }) {
             <div className="flex items-center justify-between pb-3 border-b border-[#ECE7DE]">
               <div>
                 <h3 className="font-serif text-lg font-bold text-[#1C1C1A]">
-                  Share Product Photo & Order
+                  Send Product Photo & Order
                 </h3>
                 <p className="text-xs text-[#6B6A66]">
-                  Follow these 2 quick steps to order on WhatsApp
+                  Attach photo to your WhatsApp message
                 </p>
               </div>
               <button
@@ -528,7 +546,7 @@ export default function ProductDetailModal({ product, onClose }) {
               </button>
             </div>
 
-            {/* Step 1: Save / Open Image */}
+            {/* Step 1: Photo actions */}
             <div className="p-3.5 rounded-xl bg-[#FAF9F6] border border-[#E8E4DC] space-y-2.5">
               <div className="flex items-center gap-3">
                 <img
@@ -537,30 +555,38 @@ export default function ProductDetailModal({ product, onClose }) {
                   className="w-16 h-16 rounded-lg object-cover border border-[#D5CEC4] flex-shrink-0"
                 />
                 <div className="text-xs flex-1">
-                  <p className="font-bold text-[#1C1C1A]">Step 1: Save Product Photo</p>
+                  <p className="font-bold text-[#1C1C1A]">Step 1: Copy or Save Photo</p>
                   <p className="text-[11px] text-[#6B6A66] mt-0.5">
-                    Save or open the photo to easily attach it in your WhatsApp conversation.
+                    Copy the photo to clipboard or save it to your phone/computer.
                   </p>
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <a
-                  href={currentImageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-[#D5CEC4] text-xs font-semibold text-[#1C1C1A] hover:bg-[#F5EFEB] transition-colors"
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyPhoto}
+                  className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-[#D5CEC4] text-xs font-semibold text-[#1C1C1A] hover:bg-[#F5EFEB] transition-colors cursor-pointer"
                 >
-                  <ExternalLink className="w-3.5 h-3.5 text-[#8C6542]" />
-                  <span>Open Full Photo</span>
-                </a>
+                  {copiedPhoto ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-green-600" />
+                      <span className="text-green-700">Photo Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <ImageIcon className="w-3.5 h-3.5 text-[#8C6542]" />
+                      <span>Copy Photo</span>
+                    </>
+                  )}
+                </button>
 
                 <a
                   href={currentImageUrl}
                   download={`${(product.slug || 'product')}-photo.jpg`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-[#D5CEC4] text-xs font-semibold text-[#1C1C1A] hover:bg-[#F5EFEB] transition-colors"
+                  className="inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-[#D5CEC4] text-xs font-semibold text-[#1C1C1A] hover:bg-[#F5EFEB] transition-colors"
                 >
                   <Download className="w-3.5 h-3.5 text-[#8C6542]" />
                   <span>Save Photo</span>
@@ -568,12 +594,12 @@ export default function ProductDetailModal({ product, onClose }) {
               </div>
             </div>
 
-            {/* Step 2: Open WhatsApp with Order Message */}
+            {/* Step 2: Open WhatsApp */}
             <div className="p-3.5 rounded-xl bg-[#F0FDF4] border border-[#BBF7D0] space-y-2.5">
               <div className="text-xs text-[#166534]">
-                <p className="font-bold">Step 2: Send Pre-filled Order in WhatsApp</p>
+                <p className="font-bold">Step 2: Send Message in WhatsApp</p>
                 <p className="text-[11px] text-[#15803d] mt-0.5">
-                  Your message includes the exact product reference, price, and product page link.
+                  The message includes the product reference, price, direct photo URL, and product link. Just paste your copied photo!
                 </p>
               </div>
 
@@ -581,7 +607,7 @@ export default function ProductDetailModal({ product, onClose }) {
                 <button
                   type="button"
                   onClick={handleCopyOrderText}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-[#BBF7D0] text-xs font-semibold text-[#166534] hover:bg-[#DCFCE7] transition-colors"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-white border border-[#BBF7D0] text-xs font-semibold text-[#166534] hover:bg-[#DCFCE7] transition-colors cursor-pointer"
                 >
                   {copiedMessage ? (
                     <>
@@ -591,7 +617,7 @@ export default function ProductDetailModal({ product, onClose }) {
                   ) : (
                     <>
                       <Copy className="w-3.5 h-3.5" />
-                      <span>Copy Details</span>
+                      <span>Copy Text</span>
                     </>
                   )}
                 </button>
@@ -609,7 +635,7 @@ export default function ProductDetailModal({ product, onClose }) {
             </div>
 
             <p className="text-[10px] text-center text-[#7A7873]">
-              Product details are ready in WhatsApp. To send the product photo, attach the saved/shared image if needed.
+              Tip: If you copied the photo, simply press <strong>Paste (Ctrl+V)</strong> in WhatsApp to send it with your message.
             </p>
           </div>
         </div>

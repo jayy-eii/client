@@ -1,6 +1,14 @@
 import React from 'react';
 import { Eye, MessageCircle, Layers } from 'lucide-react';
-import { storeInfo, getWhatsAppOrderUrl, getDisplayPrice, hasValidPrice, getProductPageUrl } from '../data/productsData';
+import {
+  storeInfo,
+  getWhatsAppOrderUrl,
+  getDisplayPrice,
+  hasValidPrice,
+  getProductPageUrl,
+  getProductPrimaryImageUrl,
+} from '../data/productsData';
+import { copyImageToClipboard } from '../utils/whatsappShareHelper';
 
 export default function ProductCard({ product, onOpenDetail }) {
   const images = product.images || [];
@@ -14,11 +22,16 @@ export default function ProductCard({ product, onOpenDetail }) {
       : '/assets/images/doormat/doormat-hero.jpg';
 
   const isAvailable = product.available !== false;
+  const productImageUrl = getProductPrimaryImageUrl(product, true);
 
-  const whatsappOrderUrl = getWhatsAppOrderUrl(product);
+  const whatsappOrderUrl = getWhatsAppOrderUrl(product, {
+    photoUrl: productImageUrl,
+    pageUrl: getProductPageUrl(product, true),
+  });
 
   const handleWhatsAppOrder = (e) => {
     e.stopPropagation();
+    copyImageToClipboard(productImageUrl).catch(() => {});
   };
 
   return (

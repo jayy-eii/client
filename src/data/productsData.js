@@ -504,6 +504,36 @@ export const getProductPageUrl = (product, absolute = true) => {
 };
 
 /**
+ * Resolves the primary image URL of a product as a guaranteed absolute URL
+ */
+export const getProductPrimaryImageUrl = (product, absolute = true) => {
+  if (!product) return '';
+  const images = product.images || [];
+  let rawUrl = '';
+  if (images.length > 0) {
+    rawUrl = typeof images[0] === 'string' ? images[0] : images[0]?.url || '';
+  }
+  if (!rawUrl && product.coverImage) {
+    rawUrl = product.coverImage;
+  }
+  if (!rawUrl) {
+    rawUrl = '/assets/images/doormat/doormat-hero.jpg';
+  }
+
+  if (!absolute) return rawUrl;
+
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    return rawUrl;
+  }
+
+  const origin =
+    typeof window !== 'undefined' && window.location && window.location.origin
+      ? window.location.origin
+      : 'https://yashcloths.vercel.app';
+  return `${origin}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+};
+
+/**
  * Generates unique product reference code / ID
  */
 export const getProductIdentifier = (product) => {
@@ -536,6 +566,7 @@ export const getProductIdentifier = (product) => {
  * Category: [Category]
  * Price: [₹Price or Price on request]
  * Product ID: [Unique ID]
+ * Product photo: [Direct High-Res Image URL]
  * [Details/Variation if available]
  * Product link: https://yashcloths.vercel.app/product/[SLUG]
  * 
@@ -549,6 +580,11 @@ export const generateWhatsAppOrderMessage = (product, options = {}) => {
   const priceDisplay = getDisplayPrice(product.price);
   const productId = options.productId || getProductIdentifier(product);
   const productUrl = options.pageUrl || getProductPageUrl(product, true);
+  const photoUrl =
+    options.photoUrl ||
+    (options.selectedImageUrl
+      ? getProductPrimaryImageUrl({ images: [options.selectedImageUrl] }, true)
+      : getProductPrimaryImageUrl(product, true));
   const variationOrDetails = options.variation || options.selectedVariation || product.size;
 
   const lines = [
@@ -559,6 +595,10 @@ export const generateWhatsAppOrderMessage = (product, options = {}) => {
     `Price: ${priceDisplay}`,
     `Product ID: ${productId}`,
   ];
+
+  if (photoUrl) {
+    lines.push(`Product photo: ${photoUrl}`);
+  }
 
   if (variationOrDetails && variationOrDetails.trim()) {
     lines.push(`Details: ${variationOrDetails.trim()}`);
