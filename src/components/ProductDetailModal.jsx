@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight, MessageCircle, Phone, MapPin, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { storeInfo, getWhatsAppOrderUrl } from '../data/productsData';
 
 export default function ProductDetailModal({ product, onClose }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const touchStartX = useRef(null);
+  const touchEndX = useRef(null);
 
   useEffect(() => {
     setCurrentImageIndex(0);
@@ -29,14 +31,36 @@ export default function ProductDetailModal({ product, onClose }) {
   if (!product) return null;
 
   const rawImages = product.images && product.images.length > 0 ? product.images : ['/assets/images/doormat/doormat-hero.jpg'];
-  const images = rawImages.map((img) => (typeof img === 'string' ? img : img.url));
+  const images = rawImages.map((img) => (typeof img === 'string' ? img : img.url)).filter(Boolean);
 
   const nextImage = () => {
+    if (images.length <= 1) return;
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
   };
 
   const prevImage = () => {
+    if (images.length <= 1) return;
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === null || touchEndX.current === null) return;
+    const diff = touchStartX.current - touchEndX.current;
+    if (diff > 40) {
+      nextImage();
+    } else if (diff < -40) {
+      prevImage();
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
   };
 
   const priceFormatted =
@@ -82,21 +106,26 @@ export default function ProductDetailModal({ product, onClose }) {
           {/* Left Column: Image Gallery View */}
           <div className="lg:col-span-7 flex flex-col gap-4">
             
-            {/* Main Stage Image */}
-            <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-[#F2EDE6] border border-[#E8E4DC] flex items-center justify-center">
+            {/* Main Stage Image with Mobile Touch Swipe */}
+            <div
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              className="relative aspect-[4/3] rounded-xl overflow-hidden bg-[#F2EDE6] border border-[#E8E4DC] flex items-center justify-center select-none"
+            >
               <img
-                src={images[currentImageIndex]}
+                src={images[currentImageIndex] || images[0]}
                 alt={`${product.name} view ${currentImageIndex + 1}`}
-                className="w-full h-full object-cover object-center transition-all duration-300"
+                className="w-full h-full object-cover object-center transition-all duration-300 pointer-events-none"
               />
 
-              {/* Prev / Next Arrows if multiple images */}
+              {/* Prev / Next Arrows ONLY if multiple images */}
               {images.length > 1 && (
                 <>
                   <button
                     type="button"
                     onClick={prevImage}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center text-[#1C1C1A] hover:bg-white hover:scale-105 transition-all"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center text-[#1C1C1A] hover:bg-white hover:scale-105 transition-all cursor-pointer"
                     aria-label="Previous photo"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -105,21 +134,21 @@ export default function ProductDetailModal({ product, onClose }) {
                   <button
                     type="button"
                     onClick={nextImage}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center text-[#1C1C1A] hover:bg-white hover:scale-105 transition-all"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/90 backdrop-blur-md shadow-md flex items-center justify-center text-[#1C1C1A] hover:bg-white hover:scale-105 transition-all cursor-pointer"
                     aria-label="Next photo"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
+
+                  {/* Counter Pill */}
+                  <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium">
+                    {currentImageIndex + 1} / {images.length}
+                  </div>
                 </>
               )}
-
-              {/* Counter Pill */}
-              <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[11px] font-medium">
-                {currentImageIndex + 1} / {images.length}
-              </div>
             </div>
 
-            {/* Thumbnail Navigation Strip */}
+            {/* Thumbnail Navigation Strip ONLY if multiple images */}
             {images.length > 1 && (
               <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
                 {images.map((img, idx) => (
@@ -127,7 +156,7 @@ export default function ProductDetailModal({ product, onClose }) {
                     key={idx}
                     type="button"
                     onClick={() => setCurrentImageIndex(idx)}
-                    className={`relative w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${
+                    className={`relative w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
                       currentImageIndex === idx
                         ? 'border-[#8C6542] ring-2 ring-[#8C6542]/30 scale-95'
                         : 'border-[#E2DCD2] opacity-75 hover:opacity-100'

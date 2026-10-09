@@ -4,10 +4,16 @@ import { Link } from 'react-router-dom';
 import { storeInfo, categoriesData } from '../data/productsData';
 
 export default function Footer({ onSelectCategory, dynamicCategories }) {
-  const categoriesList =
+  const rawCategories =
     dynamicCategories && dynamicCategories.length > 0
       ? dynamicCategories
       : categoriesData;
+
+  const categoriesList = [...rawCategories].sort((a, b) => {
+    const ordA = a.displayOrder !== undefined && a.displayOrder !== 0 ? a.displayOrder : a.order || 0;
+    const ordB = b.displayOrder !== undefined && b.displayOrder !== 0 ? b.displayOrder : b.order || 0;
+    return ordA - ordB;
+  });
 
   const handleCategoryClick = (categoryId) => {
     onSelectCategory(categoryId);

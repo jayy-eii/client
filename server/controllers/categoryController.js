@@ -14,11 +14,11 @@ export const getCategories = async (req, res) => {
       filter.isHidden = { $ne: true };
     }
 
-    const categories = await Category.find(filter).sort({ order: 1, createdAt: 1 });
+    const categories = await Category.find(filter).sort({ displayOrder: 1, order: 1, createdAt: 1 });
 
     // Attach dynamic product counts (visible & total)
     const categoriesWithCount = await Promise.all(
-      categories.map(async (cat) => {
+      categories.map(async (cat, idx) => {
         const visibleCount = await Product.countDocuments({
           $or: [
             { categoryId: cat.slug },
@@ -34,8 +34,16 @@ export const getCategories = async (req, res) => {
           ],
         });
 
+        const effectiveOrder = cat.displayOrder !== undefined && cat.displayOrder !== 0
+          ? cat.displayOrder
+          : cat.order !== undefined && cat.order !== 0
+          ? cat.order
+          : idx + 1;
+
         return {
           ...cat.toObject(),
+          displayOrder: effectiveOrder,
+          order: effectiveOrder,
           productCount: visibleCount,
           totalProductCount: totalCount,
         };
@@ -148,6 +156,14 @@ export const createCategory = async (req, res) => {
     }
 
     const totalCount = await Category.countDocuments();
+    const maxOrderCat = await Category.findOne({}).sort({ displayOrder: -1, order: -1 });
+    const nextOrder = (maxOrderCat?.displayOrder || maxOrderCat?.order || totalCount) + 1;
+    const finalOrder =
+      order !== undefined && order !== ''
+        ? Number(order)
+        : req.body.displayOrder !== undefined && req.body.displayOrder !== ''
+        ? Number(req.body.displayOrder)
+        : nextOrder;
 
     const category = new Category({
       name: trimmedName,
@@ -158,7 +174,8 @@ export const createCategory = async (req, res) => {
       coverImagePublicId,
       badge: badge ? badge.trim() : 'Available in Store',
       itemCountText: itemCountText ? itemCountText.trim() : '',
-      order: order !== undefined && order !== '' ? Number(order) : totalCount + 1,
+      order: finalOrder,
+      displayOrder: finalOrder,
       isHidden: isHidden === 'true' || isHidden === true,
     });
 
@@ -258,7 +275,14 @@ export const updateCategory = async (req, res) => {
     if (description !== undefined) category.description = description.trim();
     if (badge !== undefined) category.badge = badge.trim();
     if (itemCountText !== undefined) category.itemCountText = itemCountText.trim();
-    if (order !== undefined && order !== '') category.order = Number(order);
+    if (order !== undefined && order !== '') {
+      category.order = Number(order);
+      category.displayOrder = Number(order);
+    }
+    if (req.body.displayOrder !== undefined && req.body.displayOrder !== '') {
+      category.displayOrder = Number(req.body.displayOrder);
+      category.order = Number(req.body.displayOrder);
+    }
     if (isHidden !== undefined) category.isHidden = isHidden === 'true' || isHidden === true;
 
     // Handle Image Replacement / Removal
@@ -454,3 +478,90 @@ export const toggleCategoryVisibility = async (req, res) => {
     });
   }
 };
+
+/**
+ * @desc Reorder categories (save custom displayOrder sequence)
+ * @route PUT /api/categories/reorder
+ * @access Private (Admin)
+ */
+export const reorderCategories = async (req, res) => {
+  try {
+    const { orderedIds, categories: categoryList } = req.body;
+    let idList = [];
+
+    if (Array.isArray(orderedIds) && orderedIds.length > 0) {
+      idList = orderedIds;
+    } else if (Array.isArray(categoryList) && categoryList.length > 0) {
+      idList = categoryList.map((c) => (typeof c === 'string' ? c : c.id || c._id));
+    }
+
+    if (!idList || idList.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an ordered array of category IDs (orderedIds).',
+      });
+    }
+
+    // Update each category's displayOrder and order in parallel
+    const updatePromises = idList.map((id, index) => {
+      const newOrder = index + 1;
+      return Category.findByIdAndUpdate(
+        id,
+        { $set: { displayOrder: newOrder, order: newOrder } },
+        { returnDocument: 'after' }
+      );
+    });
+
+    await Promise.all(updatePromises);
+
+    // Fetch updated list in new sorted order
+    const updatedCategories = await Category.find({}).sort({ displayOrder: 1, order: 1, createdAt: 1 });
+
+    // Attach product counts
+    const categoriesWithCount = await Promise.all(
+      updatedCategories.map(async (cat, idx) => {
+        const visibleCount = await Product.countDocuments({
+          $or: [
+            { categoryId: cat.slug },
+            { category: new RegExp(`^${cat.name}$`, 'i') },
+          ],
+          isHidden: false,
+        });
+
+        const totalCount = await Product.countDocuments({
+          $or: [
+            { categoryId: cat.slug },
+            { category: new RegExp(`^${cat.name}$`, 'i') },
+          ],
+        });
+
+        const effectiveOrder = cat.displayOrder !== undefined && cat.displayOrder !== 0
+          ? cat.displayOrder
+          : cat.order !== undefined && cat.order !== 0
+          ? cat.order
+          : idx + 1;
+
+        return {
+          ...cat.toObject(),
+          displayOrder: effectiveOrder,
+          order: effectiveOrder,
+          productCount: visibleCount,
+          totalProductCount: totalCount,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Category display order saved successfully',
+      categories: categoriesWithCount,
+    });
+  } catch (error) {
+    console.error('[Reorder Categories Error]', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reorder categories',
+    });
+  }
+};
+

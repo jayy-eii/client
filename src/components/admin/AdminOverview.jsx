@@ -150,7 +150,7 @@ export default function AdminOverview({ stats, products, categories = [], onNavi
                 p.images && p.images.length > 0
                   ? typeof p.images[0] === 'string'
                     ? p.images[0]
-                    : p.images[0].url
+                    : p.images[0]?.url || '/assets/images/doormat/doormat-hero.jpg'
                   : '/assets/images/doormat/doormat-hero.jpg';
 
               return (

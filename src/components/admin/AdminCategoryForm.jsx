@@ -44,7 +44,13 @@ export default function AdminCategoryForm({ categoryToEdit, onSuccess, onCancel 
       setDescription(categoryToEdit.description || '');
       setBadge(categoryToEdit.badge || 'Available in Store');
       setItemCountText(categoryToEdit.itemCountText || '');
-      setOrder(categoryToEdit.order !== undefined ? categoryToEdit.order : '');
+      setOrder(
+        categoryToEdit.displayOrder !== undefined
+          ? categoryToEdit.displayOrder
+          : categoryToEdit.order !== undefined
+          ? categoryToEdit.order
+          : ''
+      );
       setIsHidden(Boolean(categoryToEdit.isHidden));
       setExistingImage(categoryToEdit.coverImage || '');
       setRemoveExistingImage(false);
@@ -99,7 +105,10 @@ export default function AdminCategoryForm({ categoryToEdit, onSuccess, onCancel 
       formData.append('description', description.trim());
       formData.append('badge', badge.trim());
       formData.append('itemCountText', itemCountText.trim());
-      if (order !== '') formData.append('order', order);
+      if (order !== '') {
+        formData.append('order', order);
+        formData.append('displayOrder', order);
+      }
       formData.append('isHidden', isHidden ? 'true' : 'false');
 
       if (newImageFile) {

@@ -12,10 +12,16 @@ export default function ProductCatalogue({
 }) {
   const [filterQuery, setFilterQuery] = useState('');
 
-  const categoriesList =
+  const rawCategories =
     dynamicCategories && dynamicCategories.length > 0
       ? dynamicCategories
       : categoriesData;
+
+  const categoriesList = [...rawCategories].sort((a, b) => {
+    const ordA = a.displayOrder !== undefined && a.displayOrder !== 0 ? a.displayOrder : a.order || 0;
+    const ordB = b.displayOrder !== undefined && b.displayOrder !== 0 ? b.displayOrder : b.order || 0;
+    return ordA - ordB;
+  });
 
   const allProductsList =
     dynamicProducts && dynamicProducts.length > 0

@@ -118,35 +118,64 @@ export const createProduct = async (req, res) => {
     }
 
     // Upload files to Cloudinary
-    const uploadedImages = [];
+    const uploadedNewFiles = [];
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const uploadRes = await uploadBufferToCloudinary(file.buffer);
-        uploadedImages.push({
+        uploadedNewFiles.push({
           url: uploadRes.url,
           public_id: uploadRes.public_id,
         });
       }
     }
 
-    // Support pre-existing image URLs if passed as JSON string or array
-    if (req.body.existingImages) {
+    let finalImages = [];
+
+    // Check if an explicit imageStructure order was passed from client
+    if (req.body.imageStructure) {
       try {
-        const existing =
-          typeof req.body.existingImages === 'string'
-            ? JSON.parse(req.body.existingImages)
-            : req.body.existingImages;
-        if (Array.isArray(existing)) {
-          existing.forEach((img) => {
-            if (typeof img === 'string') {
-              uploadedImages.push({ url: img, public_id: '' });
-            } else if (img && img.url) {
-              uploadedImages.push(img);
+        const structure =
+          typeof req.body.imageStructure === 'string'
+            ? JSON.parse(req.body.imageStructure)
+            : req.body.imageStructure;
+        if (Array.isArray(structure) && structure.length > 0) {
+          for (const item of structure) {
+            if (item.type === 'new' && typeof item.newIndex === 'number' && uploadedNewFiles[item.newIndex]) {
+              finalImages.push(uploadedNewFiles[item.newIndex]);
+            } else if (item.type === 'existing' && item.url) {
+              finalImages.push({
+                url: item.url,
+                public_id: item.public_id || '',
+              });
             }
-          });
+          }
         }
-      } catch (e) {
-        console.warn('Could not parse existingImages:', e.message);
+      } catch (err) {
+        console.warn('Could not parse imageStructure:', err.message);
+      }
+    }
+
+    // Fallback if imageStructure wasn't sent or was empty
+    if (finalImages.length === 0) {
+      finalImages = [...uploadedNewFiles];
+      if (req.body.existingImages) {
+        try {
+          const existing =
+            typeof req.body.existingImages === 'string'
+              ? JSON.parse(req.body.existingImages)
+              : req.body.existingImages;
+          if (Array.isArray(existing)) {
+            existing.forEach((img) => {
+              if (typeof img === 'string') {
+                finalImages.push({ url: img, public_id: '' });
+              } else if (img && img.url) {
+                finalImages.push(img);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('Could not parse existingImages:', e.message);
+        }
       }
     }
 
@@ -203,7 +232,7 @@ export const createProduct = async (req, res) => {
       price: price !== undefined && price !== '' && !isNaN(Number(price)) ? Number(price) : null,
       size: size ? size.trim() : '',
       details: parsedDetails,
-      images: uploadedImages,
+      images: finalImages,
       tags: parsedTags,
       available: available === undefined ? true : available === 'true' || available === true,
       isHidden: isHidden === 'true' || isHidden === true,
@@ -309,46 +338,84 @@ export const updateProduct = async (req, res) => {
       }
     }
 
-    // Keep existing images list as sent by client (allows client to delete specific images)
-    let keptImages = [];
-    if (req.body.existingImages) {
-      try {
-        const parsed =
-          typeof req.body.existingImages === 'string'
-            ? JSON.parse(req.body.existingImages)
-            : req.body.existingImages;
-        if (Array.isArray(parsed)) {
-          keptImages = parsed.map((img) =>
-            typeof img === 'string' ? { url: img, public_id: '' } : img
-          );
-        }
-      } catch (e) {
-        keptImages = product.images;
-      }
-    } else {
-      keptImages = product.images;
-    }
-
-    // Find images that were removed and clean them from Cloudinary
-    const keptPublicIds = keptImages.map((i) => i.public_id).filter(Boolean);
-    for (const oldImg of product.images) {
-      if (oldImg.public_id && !keptPublicIds.includes(oldImg.public_id)) {
-        await deleteFromCloudinary(oldImg.public_id);
-      }
-    }
-
     // Upload newly added files
+    const uploadedNewFiles = [];
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const uploadRes = await uploadBufferToCloudinary(file.buffer);
-        keptImages.push({
+        uploadedNewFiles.push({
           url: uploadRes.url,
           public_id: uploadRes.public_id,
         });
       }
     }
 
-    product.images = keptImages;
+    let finalImages = [];
+
+    // Check if an explicit imageStructure order was passed from client
+    if (req.body.imageStructure) {
+      try {
+        const structure =
+          typeof req.body.imageStructure === 'string'
+            ? JSON.parse(req.body.imageStructure)
+            : req.body.imageStructure;
+        if (Array.isArray(structure) && structure.length > 0) {
+          for (const item of structure) {
+            if (item.type === 'new' && typeof item.newIndex === 'number' && uploadedNewFiles[item.newIndex]) {
+              finalImages.push(uploadedNewFiles[item.newIndex]);
+            } else if (item.type === 'existing' && item.url) {
+              finalImages.push({
+                url: item.url,
+                public_id: item.public_id || '',
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not parse imageStructure:', err.message);
+      }
+    }
+
+    // Fallback if imageStructure wasn't sent
+    if (finalImages.length === 0) {
+      let keptImages = [];
+      if (req.body.existingImages) {
+        try {
+          const parsed =
+            typeof req.body.existingImages === 'string'
+              ? JSON.parse(req.body.existingImages)
+              : req.body.existingImages;
+          if (Array.isArray(parsed)) {
+            keptImages = parsed.map((img) =>
+              typeof img === 'string' ? { url: img, public_id: '' } : img
+            );
+          }
+        } catch (e) {
+          keptImages = product.images;
+        }
+      } else if (!req.files || req.files.length === 0) {
+        keptImages = product.images;
+      }
+      finalImages = [...keptImages, ...uploadedNewFiles];
+    }
+
+    // Find images that were removed and clean them from Cloudinary safely
+    const finalPublicIds = finalImages.map((i) => i.public_id).filter(Boolean);
+    for (const oldImg of product.images) {
+      if (oldImg.public_id && !finalPublicIds.includes(oldImg.public_id)) {
+        const otherRef = await Product.findOne({
+          _id: { $ne: product._id },
+          'images.public_id': oldImg.public_id,
+        });
+        if (!otherRef) {
+          await deleteFromCloudinary(oldImg.public_id);
+        }
+      }
+    }
+
+    if (finalImages.length > 0) {
+      product.images = finalImages;
+    }
 
     const updatedProduct = await product.save();
 
@@ -381,11 +448,17 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    // Clean up Cloudinary images
+    // Clean up Cloudinary images safely (only if not referenced by another product)
     if (product.images && product.images.length > 0) {
       for (const img of product.images) {
         if (img.public_id) {
-          await deleteFromCloudinary(img.public_id);
+          const otherRef = await Product.findOne({
+            _id: { $ne: product._id },
+            'images.public_id': img.public_id,
+          });
+          if (!otherRef) {
+            await deleteFromCloudinary(img.public_id);
+          }
         }
       }
     }

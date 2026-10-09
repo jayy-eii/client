@@ -349,8 +349,8 @@ export default function AdminLayout() {
             isLoading={dataLoading}
             onRefresh={loadData}
             onEditProduct={handleStartEditProduct}
-            onAddNew={() => {
-              setEditingProduct(null);
+            onAddNew={(catName) => {
+              setEditingProduct(catName && typeof catName === 'string' ? { category: catName } : null);
               setActiveTab('add');
             }}
           />

@@ -20,8 +20,8 @@ router.get('/:id', getProductById);
 
 // Protected admin management routes
 router.get('/admin/stats', protectAdmin, getAdminStats);
-router.post('/', protectAdmin, uploadProductImages.array('images', 10), createProduct);
-router.put('/:id', protectAdmin, uploadProductImages.array('images', 10), updateProduct);
+router.post('/', protectAdmin, uploadProductImages.array('images', 30), createProduct);
+router.put('/:id', protectAdmin, uploadProductImages.array('images', 30), updateProduct);
 router.delete('/:id', protectAdmin, deleteProduct);
 router.patch('/:id/status', protectAdmin, toggleProductStatus);
 router.patch('/:id/visibility', protectAdmin, toggleProductVisibility);

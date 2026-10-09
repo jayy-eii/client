@@ -10,7 +10,7 @@ export default function ProductCard({ product, onOpenDetail }) {
     imageCount > 0
       ? typeof images[0] === 'string'
         ? images[0]
-        : images[0].url
+        : images[0]?.url || '/assets/images/doormat/doormat-hero.jpg'
       : '/assets/images/doormat/doormat-hero.jpg';
 
   const isAvailable = product.available !== false;

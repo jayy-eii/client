@@ -13,10 +13,16 @@ export default function CategoryGrid({ activeCategory, onSelectCategory, dynamic
     }
   };
 
-  const categoriesToRender =
+  const rawCategories =
     dynamicCategories && dynamicCategories.length > 0
       ? dynamicCategories
       : categoriesData;
+
+  const categoriesToRender = [...rawCategories].sort((a, b) => {
+    const ordA = a.displayOrder !== undefined && a.displayOrder !== 0 ? a.displayOrder : a.order || 0;
+    const ordB = b.displayOrder !== undefined && b.displayOrder !== 0 ? b.displayOrder : b.order || 0;
+    return ordA - ordB;
+  });
 
   return (
     <section id="collections" className="py-16 sm:py-24 bg-white border-y border-[#ECE7DE]">

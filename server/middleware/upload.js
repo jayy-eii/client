@@ -20,7 +20,7 @@ export const uploadProductImages = multer({
   storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max per image
-    files: 10, // Max 10 images at once
+    files: 30, // Max 30 images at once for comprehensive product galleries
   },
   fileFilter,
 });

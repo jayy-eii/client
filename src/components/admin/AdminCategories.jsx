@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   Layers,
@@ -13,10 +13,15 @@ import {
   Search,
   CheckCircle2,
   Image as ImageIcon,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 
 export default function AdminCategories({
-  categories,
+  categories = [],
   onRefresh,
   onAddNewCategory,
   onEditCategory,
@@ -25,8 +30,19 @@ export default function AdminCategories({
 }) {
   const { authFetch } = useAuth();
 
+  // Internal ordered list for immediate visual drag & drop feedback
+  const [categoryList, setCategoryList] = useState([]);
   const [search, setSearch] = useState('');
   const [actionInProgressId, setActionInProgressId] = useState(null);
+
+  // Drag & drop state
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  // Reorder persistence state
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [orderSaveSuccess, setOrderSaveSuccess] = useState('');
+  const [orderSaveError, setOrderSaveError] = useState('');
 
   // Safety Delete Modal State
   const [categoryToDelete, setCategoryToDelete] = useState(null);
@@ -36,8 +52,144 @@ export default function AdminCategories({
   const [deleteError, setDeleteError] = useState('');
   const [deleteSuccess, setDeleteSuccess] = useState('');
 
-  const filteredCategories = categories.filter((cat) => {
-    if (!search) return true;
+  // Keep local ordered list in sync with parent categories prop
+  useEffect(() => {
+    if (categories && categories.length > 0) {
+      // Sort primarily by displayOrder, then order, then index
+      const sorted = [...categories].sort((a, b) => {
+        const orderA = a.displayOrder !== undefined && a.displayOrder !== 0 ? a.displayOrder : a.order || 0;
+        const orderB = b.displayOrder !== undefined && b.displayOrder !== 0 ? b.displayOrder : b.order || 0;
+        return orderA - orderB;
+      });
+      setCategoryList(sorted);
+    } else {
+      setCategoryList([]);
+    }
+  }, [categories]);
+
+  // Persist new order sequence to MongoDB
+  const persistCategoryOrder = async (updatedList) => {
+    setIsSavingOrder(true);
+    setOrderSaveError('');
+    setOrderSaveSuccess('');
+
+    try {
+      const orderedIds = updatedList.map((c) => c._id || c.id);
+      const res = await authFetch('/api/categories/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedIds }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to save category display order.');
+      }
+
+      setOrderSaveSuccess('Category display sequence saved to MongoDB & live website!');
+      setTimeout(() => setOrderSaveSuccess(''), 3500);
+
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (err) {
+      console.error('Reorder persistence error:', err);
+      setOrderSaveError(err.message || 'Failed to save new order.');
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
+  // Reordering: Move Up (1 position)
+  const handleMoveUp = async (index) => {
+    if (index <= 0 || search.trim()) return;
+    const copy = [...categoryList];
+    const [item] = copy.splice(index, 1);
+    copy.splice(index - 1, 0, item);
+    setCategoryList(copy);
+    await persistCategoryOrder(copy);
+  };
+
+  // Reordering: Move Down (1 position)
+  const handleMoveDown = async (index) => {
+    if (index >= categoryList.length - 1 || search.trim()) return;
+    const copy = [...categoryList];
+    const [item] = copy.splice(index, 1);
+    copy.splice(index + 1, 0, item);
+    setCategoryList(copy);
+    await persistCategoryOrder(copy);
+  };
+
+  // Reordering: Jump to Specific Position Number
+  const handlePositionChange = async (currentIndex, targetPos) => {
+    const targetIndex = Number(targetPos) - 1;
+    if (
+      isNaN(targetIndex) ||
+      targetIndex < 0 ||
+      targetIndex >= categoryList.length ||
+      targetIndex === currentIndex ||
+      search.trim()
+    ) {
+      return;
+    }
+
+    const copy = [...categoryList];
+    const [item] = copy.splice(currentIndex, 1);
+    copy.splice(targetIndex, 0, item);
+    setCategoryList(copy);
+    await persistCategoryOrder(copy);
+  };
+
+  // Drag & Drop Handlers (HTML5)
+  const handleDragStart = (e, index) => {
+    if (search.trim()) return;
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (search.trim()) return;
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragLeave = (e, index) => {
+    if (dragOverIndex === index) {
+      setDragOverIndex(null);
+    }
+  };
+
+  const handleDrop = async (e, dropIndex) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+
+    if (search.trim() || draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      return;
+    }
+
+    const copy = [...categoryList];
+    const [item] = copy.splice(draggedIndex, 1);
+    copy.splice(dropIndex, 0, item);
+
+    setCategoryList(copy);
+    setDraggedIndex(null);
+
+    await persistCategoryOrder(copy);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  // Filtered list when searching
+  const displayedCategories = categoryList.filter((cat) => {
+    if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
       cat.name.toLowerCase().includes(q) ||
@@ -66,13 +218,13 @@ export default function AdminCategories({
     }
   };
 
+  // Delete Category Modal
   const handleOpenDeleteModal = (category) => {
     setCategoryToDelete(category);
     setDeleteError('');
     setDeleteAction('move');
 
-    // Pre-select first available other category
-    const otherCategories = categories.filter(
+    const otherCategories = categoryList.filter(
       (c) => (c._id || c.id) !== (category._id || category.id)
     );
     if (otherCategories.length > 0) {
@@ -136,7 +288,7 @@ export default function AdminCategories({
   };
 
   const otherCategories = categoryToDelete
-    ? categories.filter(
+    ? categoryList.filter(
         (c) => (c._id || c.id) !== (categoryToDelete._id || categoryToDelete.id)
       )
     : [];
@@ -153,23 +305,23 @@ export default function AdminCategories({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-serif text-2xl font-bold text-[#1C1C1A]">
-              Categories Management ({categories.length})
+              Category Management ({categoryList.length})
             </h3>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F4EFEA] text-[#8C6542]">
-              {categories.filter((c) => !c.isHidden).length} Visible
+              {categoryList.filter((c) => !c.isHidden).length} Visible
             </span>
           </div>
           <p className="text-xs text-[#6B6A66] mt-0.5">
-            Create, edit, organize collections and manage category cover photos. Changes automatically reflect on the public website.
+            Drag and drop or use the Up/Down controls to set the public display sequence. Reordering automatically persists to MongoDB and updates the website.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Quick Search */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-60">
             <input
               type="text"
-              placeholder="Search categories..."
+              placeholder="Filter categories..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#D5CEC4] bg-[#FAF9F6] text-xs text-[#1C1C1A] placeholder-[#9E9B95] focus:outline-none focus:border-[#8C6542]"
@@ -189,18 +341,68 @@ export default function AdminCategories({
         </div>
       </div>
 
-      {/* Categories Grid */}
+      {/* Reorder Status Banners */}
+      {isSavingOrder && (
+        <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-xs flex items-center gap-2 animate-in fade-in">
+          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+          <span>Saving new category display order to MongoDB Atlas...</span>
+        </div>
+      )}
+
+      {orderSaveSuccess && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <span>{orderSaveSuccess}</span>
+        </div>
+      )}
+
+      {orderSaveError && (
+        <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2 animate-in fade-in">
+          <AlertTriangle className="w-4 h-4 text-red-600" />
+          <span>{orderSaveError}</span>
+        </div>
+      )}
+
+      {/* Helpful drag-and-drop hint when not searching */}
+      {!search && categoryList.length > 1 && (
+        <div className="px-4 py-2.5 rounded-xl bg-[#FAF9F6] border border-[#ECE7DE] text-[11px] text-[#7A7873] flex items-center justify-between">
+          <span className="flex items-center gap-1.5 font-medium">
+            <GripVertical className="w-3.5 h-3.5 text-[#8C6542]" />
+            <span>Drag any card by its handle or click <strong>&uarr; Up</strong> / <strong>&darr; Down</strong> to rearrange display sequence.</span>
+          </span>
+          <span className="text-[10px] text-[#8C6542] font-bold uppercase tracking-wider hidden sm:inline">
+            Custom Display Order Active
+          </span>
+        </div>
+      )}
+
+      {/* Categories Grid with Drag and Drop */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredCategories.map((cat) => {
+        {displayedCategories.map((cat, index) => {
           const catId = cat._id || cat.id || cat.slug;
           const isBusy = actionInProgressId === catId;
           const productCount = cat.totalProductCount ?? cat.productCount ?? 0;
+          const isDragging = draggedIndex === index;
+          const isOver = dragOverIndex === index;
+          const displayPosition = index + 1;
 
           return (
             <div
               key={catId}
+              draggable={!search.trim()}
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragLeave={(e) => handleDragLeave(e, index)}
+              onDrop={(e) => handleDrop(e, index)}
+              onDragEnd={handleDragEnd}
               className={`bg-white rounded-2xl border transition-all duration-200 subtle-shadow overflow-hidden flex flex-col justify-between ${
-                cat.isHidden ? 'border-amber-200 bg-amber-50/20 opacity-90' : 'border-[#E8E4DC]'
+                isDragging
+                  ? 'opacity-40 scale-95 border-dashed border-[#8C6542] ring-2 ring-[#8C6542]/40'
+                  : isOver
+                  ? 'border-[#8C6542] ring-2 ring-[#8C6542] scale-[1.02]'
+                  : cat.isHidden
+                  ? 'border-amber-200 bg-amber-50/20 opacity-90'
+                  : 'border-[#E8E4DC] hover:border-[#8C6542]'
               }`}
             >
               <div>
@@ -221,20 +423,29 @@ export default function AdminCategories({
                   )}
 
                   {/* Gradient overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent pointer-events-none" />
 
-                  {/* Badges on Top */}
-                  <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between">
-                    {/* Visibility status */}
+                  {/* Top Bar on Image: Order Badge & Drag Handle */}
+                  <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-auto">
+                    {/* Position Number Pill + Drag Handle */}
+                    <div
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/75 backdrop-blur-md text-white text-[11px] font-bold shadow-md cursor-grab active:cursor-grabbing"
+                      title="Drag to rearrange order"
+                    >
+                      <GripVertical className="w-3.5 h-3.5 text-[#E6CDB3]" />
+                      <span>#{displayPosition}</span>
+                    </div>
+
+                    {/* Visibility status button */}
                     <button
                       type="button"
                       onClick={() => handleToggleVisibility(cat)}
                       disabled={isBusy}
                       title={cat.isHidden ? 'Click to show publicly' : 'Click to hide from customers'}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-xs transition-all cursor-pointer ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold shadow-md transition-all cursor-pointer ${
                         cat.isHidden
-                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                          : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          ? 'bg-amber-100/95 text-amber-900 border border-amber-300'
+                          : 'bg-emerald-100/95 text-emerald-900 border border-emerald-300'
                       }`}
                     >
                       {cat.isHidden ? (
@@ -249,19 +460,18 @@ export default function AdminCategories({
                         </>
                       )}
                     </button>
-
-                    {/* Product count */}
-                    <div className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[11px] font-bold flex items-center gap-1.5 shadow-xs">
-                      <Package className="w-3 h-3 text-[#8C6542]" />
-                      <span>{productCount} Products</span>
-                    </div>
                   </div>
 
-                  {/* Name on image */}
-                  <div className="absolute bottom-2.5 left-3 right-3 text-white">
-                    <h4 className="font-serif text-lg sm:text-xl font-bold drop-shadow-xs truncate">
+                  {/* Name & Product Count on Bottom of Image */}
+                  <div className="absolute bottom-2.5 left-3 right-3 text-white flex items-end justify-between gap-2">
+                    <h4 className="font-serif text-lg sm:text-xl font-bold drop-shadow-sm truncate flex-1">
                       {cat.name}
                     </h4>
+
+                    <div className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white text-[10px] font-bold flex items-center gap-1 shrink-0">
+                      <Package className="w-3 h-3 text-[#E6CDB3]" />
+                      <span>{productCount}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -277,52 +487,103 @@ export default function AdminCategories({
                   </p>
 
                   {cat.itemCountText && (
-                    <p className="text-[11px] text-[#7A7873] pt-1">
+                    <p className="text-[11px] text-[#7A7873] pt-0.5">
                       <span className="font-bold">Specs:</span> {cat.itemCountText}
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* Bottom Card Controls */}
-              <div className="p-3.5 bg-[#FAF9F6] border-t border-[#ECE7DE] flex items-center justify-between gap-2 text-xs">
-                {/* Left: View Products */}
-                <button
-                  type="button"
-                  onClick={() => onSelectCategoryForFilter(cat.name)}
-                  className="font-bold text-[#8C6542] hover:text-[#1C1C1A] transition-colors cursor-pointer"
-                >
-                  View Products &rarr;
-                </button>
+              {/* Order Controls Toolbar & Actions */}
+              <div>
+                {/* Sequence Controls Toolbar (Up, Down, Position Select) */}
+                <div className="px-3.5 py-2 bg-[#F7F4EE] border-t border-[#ECE7DE] flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#7A7873]">
+                      Order:
+                    </span>
+                    {/* Position dropdown fallback */}
+                    <select
+                      value={displayPosition}
+                      onChange={(e) => handlePositionChange(index, e.target.value)}
+                      disabled={isSavingOrder || Boolean(search)}
+                      className="px-1.5 py-0.5 rounded border border-[#D5CEC4] bg-white text-[11px] font-bold text-[#1C1C1A] focus:outline-none focus:border-[#8C6542] cursor-pointer"
+                      title="Jump to position number"
+                    >
+                      {categoryList.map((_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          Pos #{i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Right: Add Product, Edit, Delete */}
-                <div className="flex items-center gap-1">
+                  {/* Move Up / Down Buttons */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveUp(index)}
+                      disabled={index === 0 || isSavingOrder || Boolean(search)}
+                      className="p-1 rounded bg-white border border-[#D5CEC4] text-[#1C1C1A] hover:bg-[#F2ECE3] hover:text-[#8C6542] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      title="Move up one position"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveDown(index)}
+                      disabled={index === categoryList.length - 1 || isSavingOrder || Boolean(search)}
+                      className="p-1 rounded bg-white border border-[#D5CEC4] text-[#1C1C1A] hover:bg-[#F2ECE3] hover:text-[#8C6542] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      title="Move down one position"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bottom Card Action Bar */}
+                <div className="p-3 bg-[#FAF9F6] border-t border-[#ECE7DE] flex items-center justify-between gap-2 text-xs">
+                  {/* Left: View Products in Category */}
                   <button
                     type="button"
-                    onClick={() => onAddProductForCategory(cat.name)}
-                    className="p-1.5 rounded-lg border border-[#D5CEC4] bg-white text-[#1C1C1A] hover:bg-[#F2ECE3] transition-colors"
-                    title={`Add product to ${cat.name}`}
+                    onClick={() => onSelectCategoryForFilter(cat.name)}
+                    className="font-bold text-[#8C6542] hover:text-[#1C1C1A] transition-colors cursor-pointer flex items-center gap-1"
+                    title={`View all products in ${cat.name}`}
                   >
-                    <Plus className="w-3.5 h-3.5 text-[#8C6542]" />
+                    <span>Products ({productCount})</span>
+                    <span>&rarr;</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onEditCategory(cat)}
-                    className="p-1.5 rounded-lg border border-[#D5CEC4] bg-white text-[#1C1C1A] hover:bg-[#F2ECE3] transition-colors"
-                    title="Edit category details & cover image"
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Right: Add Product, Edit Category, Delete Category */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onAddProductForCategory(cat.name)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-[#D5CEC4] bg-white text-[#1C1C1A] hover:bg-[#F2ECE3] hover:border-[#8C6542] text-[11px] font-semibold transition-colors cursor-pointer"
+                      title={`Add new product inside ${cat.name}`}
+                    >
+                      <Plus className="w-3 h-3 text-[#8C6542]" />
+                      <span>Product</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleOpenDeleteModal(cat)}
-                    className="p-1.5 rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 transition-colors"
-                    title="Delete category"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onEditCategory(cat)}
+                      className="p-1.5 rounded-lg border border-[#D5CEC4] bg-white text-[#1C1C1A] hover:bg-[#F2ECE3] transition-colors cursor-pointer"
+                      title="Edit category details & cover image"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDeleteModal(cat)}
+                      className="p-1.5 rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                      title="Delete category"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

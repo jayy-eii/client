@@ -14,10 +14,11 @@ import {
   Layers,
   AlertTriangle,
   CheckCircle2,
+  Package,
 } from 'lucide-react';
 
 export default function AdminProductsList({
-  products,
+  products = [],
   categories = [],
   initialCategory = 'all',
   isLoading,
@@ -47,6 +48,17 @@ export default function AdminProductsList({
     ...categories.map((c) => c.name),
   ];
 
+  // Helper to count products for each category
+  const getProductCountForCat = (catName) => {
+    if (catName === 'all') return products.length;
+    const q = catName.toLowerCase();
+    return products.filter((p) => {
+      const pCat = (p.category || '').toLowerCase();
+      const pCatId = (p.categoryId || '').toLowerCase();
+      return pCat === q || pCatId === q;
+    }).length;
+  };
+
   const filteredProducts = products.filter((p) => {
     const matchesCat =
       selectedCategory === 'all' ||
@@ -58,7 +70,8 @@ export default function AdminProductsList({
       !query ||
       p.name.toLowerCase().includes(query) ||
       (p.description && p.description.toLowerCase().includes(query)) ||
-      (p.shortDescription && p.shortDescription.toLowerCase().includes(query));
+      (p.shortDescription && p.shortDescription.toLowerCase().includes(query)) ||
+      (p.category && p.category.toLowerCase().includes(query));
 
     return matchesCat && matchesSearch;
   });
@@ -123,51 +136,123 @@ export default function AdminProductsList({
   return (
     <div className="space-y-6 text-left">
       {/* Top Filter and Search Bar */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E8E4DC] subtle-shadow flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          {/* Search Bar */}
-          <div className="relative flex-1 sm:w-64">
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-[#D5CEC4] bg-[#FAF9F6] text-xs text-[#1C1C1A] placeholder-[#9E9B95] focus:outline-none focus:border-[#8C6542]"
-            />
-            <Search className="w-3.5 h-3.5 text-[#8C6542] absolute left-3 top-1/2 -translate-y-1/2" />
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E8E4DC] subtle-shadow space-y-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            {/* Search Bar */}
+            <div className="relative flex-1 sm:w-64">
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-[#D5CEC4] bg-[#FAF9F6] text-xs text-[#1C1C1A] placeholder-[#9E9B95] focus:outline-none focus:border-[#8C6542]"
+              />
+              <Search className="w-3.5 h-3.5 text-[#8C6542] absolute left-3 top-1/2 -translate-y-1/2" />
+            </div>
+
+            {/* Dynamic Category Dropdown */}
+            <div className="relative">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-3.5 py-2 rounded-xl border border-[#D5CEC4] bg-[#FAF9F6] text-xs font-semibold text-[#1C1C1A] focus:outline-none focus:border-[#8C6542] cursor-pointer"
+              >
+                {categoryFilterOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c === 'all' ? `All Categories (${products.length})` : `${c} (${getProductCountForCat(c)})`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Dynamic Category Dropdown */}
-          <div className="relative">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-3.5 py-2 rounded-xl border border-[#D5CEC4] bg-[#FAF9F6] text-xs font-semibold text-[#1C1C1A] focus:outline-none focus:border-[#8C6542] cursor-pointer"
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <span className="text-xs text-[#6B6A66]">
+              Showing <strong>{filteredProducts.length}</strong> of {products.length} products
+            </span>
+
+            <button
+              type="button"
+              onClick={() => onAddNew(selectedCategory !== 'all' ? selectedCategory : undefined)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#8C6542] text-white text-xs font-bold hover:bg-[#735032] transition-colors shadow-xs cursor-pointer"
             >
-              {categoryFilterOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c === 'all' ? 'All Categories' : c}
-                </option>
-              ))}
-            </select>
+              <Plus className="w-4 h-4" />
+              <span>Add Product</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-          <span className="text-xs text-[#6B6A66]">
-            Showing <strong>{filteredProducts.length}</strong> of {products.length} products
-          </span>
+        {/* Category Pill Tabs for 1-Tap Category Switching */}
+        <div className="pt-2 border-t border-[#F0ECE4] flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setSelectedCategory('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+              selectedCategory === 'all'
+                ? 'bg-[#1C1C1A] text-white shadow-xs'
+                : 'bg-[#F4EFEA] text-[#54534F] hover:bg-[#EAE2D7]'
+            }`}
+          >
+            All ({products.length})
+          </button>
+
+          {categories.map((cat) => {
+            const count = getProductCountForCat(cat.name);
+            const isSelected = selectedCategory.toLowerCase() === cat.name.toLowerCase();
+
+            return (
+              <button
+                key={cat._id || cat.id || cat.slug}
+                type="button"
+                onClick={() => setSelectedCategory(cat.name)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-[#8C6542] text-white shadow-xs font-bold'
+                    : 'bg-[#F4EFEA] text-[#54534F] hover:bg-[#EAE2D7]'
+                }`}
+              >
+                <span>{cat.name}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                    isSelected ? 'bg-white text-[#8C6542]' : 'bg-[#E2DAD0] text-[#4A4946]'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Category Specific Header Banner */}
+      {selectedCategory !== 'all' && (
+        <div className="p-4 rounded-xl bg-white border border-[#E8E4DC] subtle-shadow flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#F4EFEA] border border-[#E2DAD0] flex items-center justify-center text-[#8C6542]">
+              <Package className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="font-serif text-lg font-bold text-[#1C1C1A]">
+                {selectedCategory}
+              </h4>
+              <p className="text-[11px] text-[#7A7873]">
+                {filteredProducts.length} product{filteredProducts.length === 1 ? '' : 's'} found in this category
+              </p>
+            </div>
+          </div>
 
           <button
             type="button"
-            onClick={onAddNew}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#8C6542] text-white text-xs font-bold hover:bg-[#735032] transition-colors shadow-xs cursor-pointer"
+            onClick={() => onAddNew(selectedCategory)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#8C6542] text-white text-xs font-bold hover:bg-[#735032] transition-colors shadow-2xs"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Product</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Product to {selectedCategory}</span>
           </button>
         </div>
-      </div>
+      )}
 
       {/* Products Table */}
       <div className="bg-white rounded-2xl border border-[#E8E4DC] subtle-shadow overflow-hidden">
@@ -179,20 +264,22 @@ export default function AdminProductsList({
         ) : filteredProducts.length === 0 ? (
           <div className="p-16 text-center text-gray-500 space-y-3">
             <p className="font-serif text-lg font-bold text-[#1C1C1A]">
-              No products found
+              No products found {selectedCategory !== 'all' ? `in "${selectedCategory}"` : ''}
             </p>
             <p className="text-xs text-[#6B6A66] max-w-sm mx-auto">
-              {search || selectedCategory !== 'all'
-                ? 'Try adjusting your search or category filter.'
-                : 'Your database currently has no products in this view.'}
+              {search
+                ? 'Try adjusting your search query.'
+                : selectedCategory !== 'all'
+                ? `You can click "Add Product to ${selectedCategory}" to upload items for this collection.`
+                : 'Your database currently has no products.'}
             </p>
             <button
               type="button"
-              onClick={onAddNew}
+              onClick={() => onAddNew(selectedCategory !== 'all' ? selectedCategory : undefined)}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#8C6542] text-white text-xs font-bold hover:bg-[#735032] transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Add Your First Product</span>
+              <span>{selectedCategory !== 'all' ? `Add First Product to ${selectedCategory}` : 'Add Product'}</span>
             </button>
           </div>
         ) : (
@@ -200,12 +287,12 @@ export default function AdminProductsList({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-[#FAF9F6] border-b border-[#E8E4DC] text-[#4A4946] font-bold uppercase tracking-wider text-[11px]">
-                  <th className="py-3.5 px-4">Image</th>
+                  <th className="py-3.5 px-4">Gallery</th>
                   <th className="py-3.5 px-4">Product Details</th>
                   <th className="py-3.5 px-4">Category</th>
                   <th className="py-3.5 px-4">Price</th>
-                  <th className="py-3.5 px-4">Stock Availability</th>
-                  <th className="py-3.5 px-4">Website Visibility</th>
+                  <th className="py-3.5 px-4">Stock Status</th>
+                  <th className="py-3.5 px-4">Showcase Visibility</th>
                   <th className="py-3.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -218,6 +305,7 @@ export default function AdminProductsList({
                         : product.images[0].url
                       : '/assets/images/doormat/doormat-hero.jpg';
 
+                  const imageCount = product.images ? product.images.length : 0;
                   const isAction = actionInProgressId === product._id;
 
                   return (
@@ -225,17 +313,21 @@ export default function AdminProductsList({
                       key={product._id}
                       className="hover:bg-[#FAF9F6] transition-colors group"
                     >
-                      {/* Image Thumbnail */}
+                      {/* Image Thumbnail with Gallery Count */}
                       <td className="py-3.5 px-4">
                         <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-[#F2EDE6] border border-[#E2DCD2]">
                           <img
                             src={thumb}
                             alt={product.name}
                             className="w-full h-full object-cover"
+                            loading="lazy"
                           />
-                          {product.images && product.images.length > 1 && (
-                            <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/70 text-[9px] text-white font-medium">
-                              +{product.images.length - 1}
+                          {imageCount > 1 && (
+                            <span
+                              className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/75 text-[9px] text-white font-bold tracking-tight shadow-xs"
+                              title={`${imageCount} images in gallery`}
+                            >
+                              {imageCount} imgs
                             </span>
                           )}
                         </div>
@@ -252,13 +344,13 @@ export default function AdminProductsList({
                           </p>
                         )}
                         {product.size && (
-                          <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-700 font-medium">
+                          <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-[#F4EFEA] border border-[#E3DBD0] text-[10px] text-[#6B4B2E] font-medium">
                             {product.size}
                           </span>
                         )}
                       </td>
 
-                      {/* Category */}
+                      {/* Category Badge */}
                       <td className="py-3.5 px-4">
                         <span className="inline-block px-2.5 py-1 rounded-md bg-[#F4EFEA] text-[11px] font-semibold text-[#8C6542]">
                           {product.category}
@@ -326,14 +418,14 @@ export default function AdminProductsList({
                         </button>
                       </td>
 
-                      {/* Action Buttons */}
+                      {/* Action Buttons: Edit & Delete for EVERY Category */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
                             onClick={() => onEditProduct(product)}
                             className="p-1.5 rounded-lg border border-[#D5CEC4] bg-white text-gray-700 hover:text-[#8C6542] hover:border-[#8C6542] transition-colors cursor-pointer"
-                            title="Edit Product"
+                            title={`Edit ${product.name}`}
                           >
                             <Edit className="w-4 h-4" />
                           </button>
@@ -345,7 +437,7 @@ export default function AdminProductsList({
                               setDeleteError('');
                             }}
                             className="p-1.5 rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-400 transition-colors cursor-pointer"
-                            title="Delete Product"
+                            title={`Delete ${product.name}`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -394,7 +486,7 @@ export default function AdminProductsList({
 
             <p className="mt-4 text-xs sm:text-sm text-[#4A4946] leading-relaxed">
               Are you sure you want to permanently delete <strong>"{productToDelete.name}"</strong>?
-              This will remove the item from your store catalogue and clean up its images from Cloudinary.
+              This will remove the item from your store catalogue and clean up its Cloudinary images safely.
             </p>
 
             <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-[#ECE7DE]">
