@@ -62,6 +62,12 @@ const productSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    slug: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      index: true,
+    },
     available: {
       type: Boolean,
       default: true,
@@ -78,8 +84,25 @@ const productSchema = new mongoose.Schema(
 
 // Virtual to format price with INR currency symbol
 productSchema.virtual('formattedPrice').get(function () {
-  if (this.price === null || this.price === undefined) return '';
+  if (this.price === null || this.price === undefined || this.price <= 0) return 'Price on request';
   return `₹${this.price.toLocaleString('en-IN')}`;
+});
+
+productSchema.virtual('displayPrice').get(function () {
+  if (this.price === null || this.price === undefined || this.price <= 0) return 'Price on request';
+  return `₹${this.price.toLocaleString('en-IN')}`;
+});
+
+// Auto-generate slug before save if missing or name modified
+productSchema.pre('save', function () {
+  if (!this.slug || this.isModified('name')) {
+    const generatedSlug = (this.name || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+    this.slug = generatedSlug || `prod-${Date.now()}`;
+  }
 });
 
 productSchema.set('toJSON', { virtuals: true });

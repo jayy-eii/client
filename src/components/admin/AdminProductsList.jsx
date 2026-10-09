@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { hasValidPrice, getDisplayPrice } from '../../data/productsData';
 import {
   Edit,
   Trash2,
@@ -360,9 +361,11 @@ export default function AdminProductsList({
                       {/* Price */}
                       <td className="py-3.5 px-4">
                         <span className="font-semibold text-sm text-[#1C1C1A]">
-                          {product.price !== null && product.price !== undefined
-                            ? `₹${Number(product.price).toLocaleString('en-IN')}`
-                            : <span className="text-gray-400 font-normal">Inquire in Store</span>}
+                          {hasValidPrice(product.price) ? (
+                            `₹${Number(product.price).toLocaleString('en-IN')}`
+                          ) : (
+                            <span className="text-gray-400 font-normal italic">Price on request</span>
+                          )}
                         </span>
                       </td>
 

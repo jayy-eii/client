@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
 import { Category } from '../models/Category.js';
 import { uploadBufferToCloudinary, deleteFromCloudinary } from '../config/cloudinary.js';
@@ -58,23 +59,46 @@ export const getProducts = async (req, res) => {
 };
 
 /**
- * @desc Get single product by ID
+ * @desc Get single product by ID or Slug
  * @route GET /api/products/:id
  */
 export const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const { id } = req.params;
+    let product = null;
+
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      product = await Product.findById(id);
+    }
+
+    if (!product) {
+      product = await Product.findOne({ slug: id.toLowerCase() });
+    }
+
+    if (!product) {
+      product = await Product.findOne({
+        $or: [
+          { 'details.productId': id },
+          { 'details.id': id },
+          { tags: id.toLowerCase() },
+          { name: new RegExp(`^${id.replace(/-/g, ' ')}$`, 'i') },
+        ],
+      });
+    }
+
     if (!product) {
       return res.status(404).json({
         success: false,
         message: 'Product not found',
       });
     }
+
     return res.status(200).json({
       success: true,
       product,
     });
   } catch (error) {
+    console.error('[Get Product By ID Error]', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to retrieve product details',
@@ -229,7 +253,10 @@ export const createProduct = async (req, res) => {
       categoryId: resolvedCategoryId,
       shortDescription: shortDescription ? shortDescription.trim() : '',
       description: description ? description.trim() : '',
-      price: price !== undefined && price !== '' && !isNaN(Number(price)) ? Number(price) : null,
+      price: price !== undefined && price !== '' && !isNaN(Number(price)) && Number(price) > 0 ? Number(price) : null,
+      slug: req.body.slug
+        ? req.body.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+        : (name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
       size: size ? size.trim() : '',
       details: parsedDetails,
       images: finalImages,
@@ -307,7 +334,10 @@ export const updateProduct = async (req, res) => {
     if (size !== undefined) product.size = size.trim();
 
     if (price !== undefined) {
-      product.price = price === '' || price === null || isNaN(Number(price)) ? null : Number(price);
+      product.price = price === '' || price === null || isNaN(Number(price)) || Number(price) <= 0 ? null : Number(price);
+    }
+    if (req.body.slug && req.body.slug.trim()) {
+      product.slug = req.body.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     }
 
     if (available !== undefined) {

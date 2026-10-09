@@ -1,6 +1,6 @@
 import React from 'react';
 import { Eye, MessageCircle, Layers } from 'lucide-react';
-import { storeInfo, getWhatsAppOrderUrl } from '../data/productsData';
+import { storeInfo, getWhatsAppOrderUrl, getDisplayPrice, hasValidPrice, getProductPageUrl } from '../data/productsData';
 
 export default function ProductCard({ product, onOpenDetail }) {
   const images = product.images || [];
@@ -83,9 +83,13 @@ export default function ProductCard({ product, onOpenDetail }) {
             <h3 className="font-serif text-lg sm:text-xl font-bold text-[#1C1C1A] group-hover:text-[#8C6542] transition-colors line-clamp-1 leading-snug flex-1">
               {product.name}
             </h3>
-            {product.price !== null && product.price !== undefined && (
+            {hasValidPrice(product.price) ? (
               <span className="text-sm font-bold text-[#1C1C1A] whitespace-nowrap bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#E8E4DC]">
-                ₹{Number(product.price).toLocaleString('en-IN')}
+                {getDisplayPrice(product.price)}
+              </span>
+            ) : (
+              <span className="text-[11px] font-medium text-[#7D766D] whitespace-nowrap bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#E8E4DC]/80">
+                Price on request
               </span>
             )}
           </div>

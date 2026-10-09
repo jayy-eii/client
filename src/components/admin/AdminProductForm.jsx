@@ -474,11 +474,14 @@ export default function AdminProductForm({
               type="number"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
-              placeholder="e.g. 1499"
+              placeholder="e.g. 1499 (Leave blank for 'Price on request')"
               min="0"
               step="1"
               className="w-full px-3.5 py-2.5 rounded-xl border border-[#D5CEC4] bg-[#FAF9F6] text-xs text-[#1C1C1A] placeholder-[#9E9B95] focus:outline-none focus:border-[#8C6542] focus:ring-1 focus:ring-[#8C6542]"
             />
+            <p className="text-[10px] text-[#7A7873] mt-1">
+              Leave empty or 0 if price should display as &ldquo;Price on request&rdquo;.
+            </p>
           </div>
 
           <div>

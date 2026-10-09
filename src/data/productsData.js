@@ -439,44 +439,132 @@ export const getProductById = (productId) => {
 };
 
 /**
- * Format product price for display and WhatsApp order messaging.
- * If price is null/undefined/empty/invalid or <= 0, returns null.
+ * Check if product has a valid price
  */
-export const formatProductPrice = (price) => {
-  if (price === null || price === undefined || price === '') return null;
+export const hasValidPrice = (price) => {
+  if (price === null || price === undefined || price === '') return false;
   const cleaned = typeof price === 'string' ? price.replace(/[^0-9.]/g, '') : price;
   const num = Number(cleaned);
-  if (!isNaN(num) && num > 0) {
-    return num.toLocaleString('en-IN');
+  return !isNaN(num) && num > 0;
+};
+
+/**
+ * Format product price for display.
+ * Returns professional Indian Rupee formatting (e.g. "₹499", "₹1,499").
+ * If owner has not entered a price or price is <= 0, returns "Price on request".
+ */
+export const getDisplayPrice = (price) => {
+  if (!hasValidPrice(price)) {
+    return 'Price on request';
   }
-  return null;
+  const cleaned = typeof price === 'string' ? price.replace(/[^0-9.]/g, '') : price;
+  const num = Number(cleaned);
+  return `₹${num.toLocaleString('en-IN')}`;
+};
+
+/**
+ * Format numeric price value without currency symbol
+ */
+export const formatProductPrice = (price) => {
+  if (!hasValidPrice(price)) return null;
+  const cleaned = typeof price === 'string' ? price.replace(/[^0-9.]/g, '') : price;
+  const num = Number(cleaned);
+  return num.toLocaleString('en-IN');
+};
+
+/**
+ * Resolves a stable unique product slug for URLs
+ */
+export const getProductSlug = (product) => {
+  if (!product) return '';
+  if (product.slug && typeof product.slug === 'string') return product.slug;
+  if (product.id && typeof product.id === 'string' && !product.id.includes(' ')) return product.id;
+  if (product._id) return product._id.toString();
+  return (product.name || 'product')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+};
+
+/**
+ * Generates the stable product detail page URL
+ */
+export const getProductPageUrl = (product, absolute = true) => {
+  if (!product) return '/';
+  const slug = getProductSlug(product);
+  const relativePath = `/product/${slug}`;
+  if (!absolute) return relativePath;
+
+  const origin =
+    typeof window !== 'undefined' && window.location && window.location.origin
+      ? window.location.origin
+      : 'https://yashcloths.vercel.app';
+  return `${origin}${relativePath}`;
+};
+
+/**
+ * Generates unique product reference code / ID
+ */
+export const getProductIdentifier = (product) => {
+  if (!product) return 'YCS-PROD';
+  if (product.details) {
+    const detailsMap = product.details instanceof Map ? Object.fromEntries(product.details) : product.details;
+    if (detailsMap.productId) return detailsMap.productId;
+    if (detailsMap['Product ID']) return detailsMap['Product ID'];
+    if (detailsMap.id) return detailsMap.id;
+  }
+  if (product.id && typeof product.id === 'string' && !product.id.includes(' ')) {
+    return product.id.toUpperCase();
+  }
+  if (product._id) {
+    return `YCS-${product._id.toString().slice(-6).toUpperCase()}`;
+  }
+  if (product.slug) {
+    return product.slug.toUpperCase();
+  }
+  return 'YCS-PROD';
 };
 
 /**
  * Generates the pre-filled WhatsApp message for ordering a product.
- * Format:
- * Hello Yash Cloth Stores, I want to order this product:
+ * Formatted dynamically per specification:
+ * 
+ * Hello Yash Cloth Stores! I would like to order this product.
+ * 
  * Product: [Product Name]
  * Category: [Category]
- * Price: ₹[Price]
+ * Price: [₹Price or Price on request]
+ * Product ID: [Unique ID]
+ * [Details/Variation if available]
+ * Product link: https://yashcloths.vercel.app/product/[SLUG]
  * 
  * Please confirm availability and ordering details.
- * 
- * If a product has no price, the Price line is omitted.
  */
-export const generateWhatsAppOrderMessage = (product) => {
+export const generateWhatsAppOrderMessage = (product, options = {}) => {
   if (!product) return '';
+
+  const productName = product.name || 'Home Furnishing Item';
+  const categoryName = product.category || 'Home Furnishings';
+  const priceDisplay = getDisplayPrice(product.price);
+  const productId = options.productId || getProductIdentifier(product);
+  const productUrl = options.pageUrl || getProductPageUrl(product, true);
+  const variationOrDetails = options.variation || options.selectedVariation || product.size;
+
   const lines = [
-    'Hello Yash Cloth Stores, I want to order this product:',
-    `Product: ${product.name || ''}`,
-    `Category: ${product.category || ''}`,
+    'Hello Yash Cloth Stores! I would like to order this product.',
+    '',
+    `Product: ${productName}`,
+    `Category: ${categoryName}`,
+    `Price: ${priceDisplay}`,
+    `Product ID: ${productId}`,
   ];
 
-  const formattedPrice = formatProductPrice(product.price);
-  if (formattedPrice) {
-    lines.push(`Price: ₹${formattedPrice}`);
+  if (variationOrDetails && variationOrDetails.trim()) {
+    lines.push(`Details: ${variationOrDetails.trim()}`);
   }
 
+  lines.push(`Product link: ${productUrl}`);
   lines.push('');
   lines.push('Please confirm availability and ordering details.');
 
@@ -484,11 +572,11 @@ export const generateWhatsAppOrderMessage = (product) => {
 };
 
 /**
- * Builds the direct WhatsApp click-to-chat URL with shop's WhatsApp number (919356591979)
- * and pre-filled order message.
+ * Builds the direct WhatsApp click-to-chat URL with shop's WhatsApp number (+91 93565 91979)
+ * and dynamically formatted pre-filled order message.
  */
-export const getWhatsAppOrderUrl = (product) => {
-  const message = generateWhatsAppOrderMessage(product);
+export const getWhatsAppOrderUrl = (product, options = {}) => {
+  const message = generateWhatsAppOrderMessage(product, options);
   const whatsappNumber = `91${storeInfo.whatsapp || '9356591979'}`;
   return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
 };
